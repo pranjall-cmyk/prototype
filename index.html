@@ -1,4 +1,3 @@
-<!-- this is a base prototype for the combat system only to understand how it can work -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -121,7 +120,7 @@ let ritualProgress = 0;
 let dizzyTimer = null;
 let ritualDecay = null;
 let attackFatigue = 0;
-let dizzyType = null;            // "puff" | "strike"
+let dizzyType = null;            // "strike" | "puff-weak" | "puff-strong"
 
 /* ================== ELEMENTS ================== */
 const bar = document.getElementById("resistanceBar");
@@ -145,7 +144,7 @@ function updateBar() {
 function updateButtons() {
   attackBtn.disabled = state !== "aggressive";
   puffBtn.disabled   = state !== "aggressive";
-  herbBtn.disabled   = state !== "dizzy";
+  herbBtn.disabled   = !(state === "dizzy" && dizzyType === "puff-strong");
 }
 
 function resetRitual() {
@@ -177,21 +176,9 @@ attackBtn.onclick = () => {
   write("You strike defensively, creating space.");
   updateBar();
 
-  // ACCIDENTAL STRIKE DIZZY (RARE)
-  if (resistance <= 70 && Math.random() < 0.25) {
-    state = "dizzy";
-    dizzyType = "strike";
-    updateButtons();
-    write("The animal stumbles briefly.");
-
-    dizzyTimer = setTimeout(() => {
-      if (state === "dizzy" && dizzyType === "strike") {
-        state = "aggressive";
-        dizzyType = null;
-        write("The animal regains its footing.");
-        updateButtons();
-      }
-    }, 1500);
+  // RARE STRIKE DIZZY
+  if (resistance <= 30 && Math.random() < 0.25) {
+    enterDizzy("strike", 1500, "The animal stumbles briefly.");
   }
 };
 
@@ -199,28 +186,30 @@ attackBtn.onclick = () => {
 puffBtn.onclick = () => {
   if (state !== "aggressive") return;
 
-  const successChance =
-    resistance <= 35 ? 0.95 :
-    resistance <= 60 ? 0.7  :
-    0.45;
-
   write("You throw a puff ball…");
 
-  setTimeout(() => {
-    if (Math.random() < successChance) {
-      state = "dizzy";
-      dizzyType = "puff";
-      updateButtons();
-      write("The animal reels — a clear opening appears.");
+  let chance, duration, type, text;
 
-      dizzyTimer = setTimeout(() => {
-        if (state === "dizzy" && dizzyType === "puff") {
-          state = "aggressive";
-          dizzyType = null;
-          write("The animal regains control.");
-          updateButtons();
-        }
-      }, 4200);
+  if (resistance > 70) {
+    chance = 0.6;
+    duration = 1600;
+    type = "puff-weak";
+    text = "The animal shakes its head, momentarily confused.";
+  } else if (resistance > 40) {
+    chance = 0.75;
+    duration = 2600;
+    type = "puff-weak";
+    text = "The animal reels, struggling to orient itself.";
+  } else {
+    chance = 0.95;
+    duration = 4200;
+    type = "puff-strong";
+    text = "The animal reels — a clear opening appears.";
+  }
+
+  setTimeout(() => {
+    if (Math.random() < chance) {
+      enterDizzy(type, duration, text);
     } else {
       write("The disruption fails. The animal resists.");
     }
@@ -229,12 +218,7 @@ puffBtn.onclick = () => {
 
 // APPLY HERB
 herbBtn.onclick = () => {
-  if (state === "dizzy" && dizzyType === "strike") {
-    write("The opening is too unstable. This is too risky.");
-    return;
-  }
-
-  if (state !== "dizzy") return;
+  if (state !== "dizzy" || dizzyType !== "puff-strong") return;
 
   clearTimeout(dizzyTimer);
   state = "ritual";
@@ -267,6 +251,23 @@ document.body.addEventListener("click", () => {
     succeedRitual();
   }
 });
+
+/* ================== DIZZY HANDLER ================== */
+function enterDizzy(type, duration, text) {
+  state = "dizzy";
+  dizzyType = type;
+  updateButtons();
+  write(text);
+
+  dizzyTimer = setTimeout(() => {
+    if (state === "dizzy" && dizzyType === type) {
+      state = "aggressive";
+      dizzyType = null;
+      write("The animal regains control.");
+      updateButtons();
+    }
+  }, duration);
+}
 
 /* ================== RESOLUTION ================== */
 function failRitual() {
