@@ -1,42 +1,38 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8" />
-<title>Ritual Combat – Locked Prototype</title>
+<meta charset="UTF-8">
+<title>Durga – Combat Prototype (Timed Ritual)</title>
 
 <style>
   body {
-    background:#0e0e0e;
-    color:#eaeaea;
+    background:#0f0f0f;
+    color:#eee;
     font-family:system-ui, sans-serif;
     display:flex;
     flex-direction:column;
     align-items:center;
     justify-content:center;
     height:100vh;
-    gap:18px;
+    gap:16px;
   }
 
-  h3 { margin-bottom:6px; }
+  h2 { margin: 0; }
 
-  .row {
-    display:flex;
-    align-items:center;
-    gap:24px;
-  }
+  .row { display:flex; gap:24px; align-items:center; }
 
   .bar-container {
     width:320px;
     height:18px;
-    background:#2a2a2a;
+    background:#2b2b2b;
     border-radius:9px;
     overflow:hidden;
   }
 
   .bar-fill {
     height:100%;
-    width:100%;
-    background:#c0392b;
+    width:50%;
+    background:linear-gradient(90deg,#2ecc71,#f1c40f,#e74c3c);
     transition:width 0.25s ease;
   }
 
@@ -46,9 +42,9 @@
     border:2px solid #aaa;
     border-radius:14px;
     background:#111;
-    overflow:hidden;
     position:relative;
-    opacity:0.4;
+    overflow:hidden;
+    opacity:0.35;
   }
 
   .paw-fill {
@@ -60,241 +56,273 @@
     transition:height 0.12s ease;
   }
 
-  .buttons {
-    display:flex;
-    gap:12px;
-  }
+  .buttons { display:flex; gap:10px; flex-wrap:wrap; }
 
   button {
-    padding:10px 16px;
-    border-radius:6px;
+    padding:8px 14px;
     border:none;
-    font-size:14px;
+    border-radius:6px;
     cursor:pointer;
+    font-size:13px;
     background:#f0f0f0;
     color:#111;
   }
 
-  button:disabled {
-    opacity:0.35;
-    cursor:not-allowed;
-  }
+  button:disabled { opacity:0.35; }
 
   .log {
     width:420px;
-    min-height:52px;
+    min-height:48px;
     text-align:center;
-    opacity:0.9;
     font-size:14px;
+    opacity:0.9;
   }
 </style>
 </head>
 
 <body>
 
-<h3>Animal State</h3>
+<h2 id="enemyTitle">Wolf</h2>
 
 <div class="row">
   <div class="bar-container">
-    <div id="resistanceBar" class="bar-fill"></div>
+    <div id="instabilityBar" class="bar-fill"></div>
   </div>
-
-  <div class="paw-container" id="pawContainer">
+  <div class="paw-container">
     <div id="pawFill" class="paw-fill"></div>
   </div>
 </div>
 
 <div class="buttons">
-  <button id="attackBtn">Defend / Strike</button>
+  <button id="strikeBtn">Defend / Strike</button>
   <button id="puffBtn">Throw Puff Ball</button>
-  <button id="herbBtn">Apply Herb</button>
+  <button id="feedBtn">Feed Herb</button>
+</div>
+
+<div class="buttons">
+  <button onclick="setAnimal('hyena')">Hyena</button>
+  <button onclick="setAnimal('wolf')">Wolf</button>
+  <button onclick="setAnimal('bear')">Bear</button>
 </div>
 
 <div id="log" class="log"></div>
 
 <script>
-/* ================== STATE ================== */
-let state = "aggressive";        // aggressive | dizzy | ritual | purified
-let resistance = 100;
-let ritualProgress = 0;
-let dizzyTimer = null;
-let ritualDecay = null;
-let attackFatigue = 0;
-let dizzyType = null;            // "strike" | "puff-weak" | "puff-strong"
+/* ================= ANIMAL TUNING ================= */
 
-/* ================== ELEMENTS ================== */
-const bar = document.getElementById("resistanceBar");
-const paw = document.getElementById("pawFill");
-const pawContainer = document.getElementById("pawContainer");
-const log = document.getElementById("log");
-
-const attackBtn = document.getElementById("attackBtn");
-const puffBtn = document.getElementById("puffBtn");
-const herbBtn = document.getElementById("herbBtn");
-
-/* ================== HELPERS ================== */
-function write(text) {
-  log.innerText = text;
-}
-
-function updateBar() {
-  bar.style.width = resistance + "%";
-}
-
-function updateButtons() {
-  attackBtn.disabled = state !== "aggressive";
-  puffBtn.disabled   = state !== "aggressive";
-  herbBtn.disabled   = !(state === "dizzy" && dizzyType === "puff-strong");
-}
-
-function resetRitual() {
-  clearInterval(ritualDecay);
-  ritualProgress = 0;
-  paw.style.height = "0%";
-  pawContainer.style.opacity = 0.4;
-}
-
-/* ================== PASSIVE ================== */
-setInterval(() => {
-  if (state !== "aggressive") return;
-  resistance = Math.min(100, resistance + 4);
-  updateBar();
-}, 2500);
-
-/* ================== ACTIONS ================== */
-
-// DEFENSIVE STRIKE
-attackBtn.onclick = () => {
-  if (state !== "aggressive") return;
-
-  const effectiveness = Math.max(6 - attackFatigue, 2);
-  resistance = Math.max(20, resistance - effectiveness);
-
-  attackFatigue++;
-  setTimeout(() => attackFatigue = Math.max(0, attackFatigue - 1), 2000);
-
-  write("You strike defensively, creating space.");
-  updateBar();
-
-  // RARE STRIKE DIZZY
-  if (resistance <= 30 && Math.random() < 0.25) {
-    enterDizzy("strike", 1500, "The animal stumbles briefly.");
+const ANIMALS = {
+  hyena: {
+    name: "Hyena",
+    pressureGain: 6,
+    driftSpeed: 2.5,
+    puffMidChance: 0.7,
+    ritualTime: 2000
+  },
+  wolf: {
+    name: "Wolf",
+    pressureGain: 4,
+    driftSpeed: 2,
+    puffMidChance: 0.8,
+    ritualTime: 3000
+  },
+  bear: {
+    name: "Bear",
+    pressureGain: 2,
+    driftSpeed: 1.2,
+    puffMidChance: 0.6,
+    ritualTime: 4500
   }
 };
 
-// PUFF BALL
+let currentAnimal = ANIMALS.wolf;
+
+/* ================= STATE ================= */
+
+let state = "aggressive";
+let instability = 50;
+let pressure = 0;
+let ritualProgress = 0;
+let barPaused = false;
+
+let dizzyTimer = null;
+let ritualTimeout = null;
+
+/* ================= ELEMENTS ================= */
+
+const bar = document.getElementById("instabilityBar");
+const paw = document.getElementById("pawFill");
+const log = document.getElementById("log");
+const title = document.getElementById("enemyTitle");
+
+const strikeBtn = document.getElementById("strikeBtn");
+const puffBtn = document.getElementById("puffBtn");
+const feedBtn = document.getElementById("feedBtn");
+
+/* ================= HELPERS ================= */
+
+function write(text) { log.innerText = text; }
+function clamp() { instability = Math.max(0, Math.min(100, instability)); }
+function updateBar() { bar.style.width = instability + "%"; }
+function updateButtons() {
+  strikeBtn.disabled = state !== "aggressive";
+  puffBtn.disabled   = state !== "aggressive";
+  feedBtn.disabled   = state !== "dizzy";
+}
+
+/* ================= PASSIVE DRIFT ================= */
+
+setInterval(() => {
+  if (barPaused || state !== "aggressive") return;
+
+  if (pressure > 0) {
+    instability += currentAnimal.driftSpeed;
+    pressure--;
+  } else {
+    if (instability > 50) instability -= currentAnimal.driftSpeed;
+    if (instability < 50) instability += currentAnimal.driftSpeed;
+  }
+
+  clamp();
+  updateBar();
+}, 1800);
+
+/* ================= ACTIONS ================= */
+
+strikeBtn.onclick = () => {
+  if (state !== "aggressive") return;
+
+  instability -= 5;
+  pressure += currentAnimal.pressureGain;
+  clamp();
+  updateBar();
+  write("You create space with a defensive strike.");
+
+  if (instability > 40 && instability < 60 && Math.random() < 0.12) {
+    enterDizzy(1200, "The animal falters.");
+  }
+};
+
 puffBtn.onclick = () => {
   if (state !== "aggressive") return;
 
-  write("You throw a puff ball…");
+  barPaused = true;
+  write("The puff ball bursts.");
 
-  let chance, duration, type, text;
+  let chance, duration;
 
-  if (resistance > 70) {
-    chance = 0.6;
-    duration = 1600;
-    type = "puff-weak";
-    text = "The animal shakes its head, momentarily confused.";
-  } else if (resistance > 40) {
-    chance = 0.75;
-    duration = 2600;
-    type = "puff-weak";
-    text = "The animal reels, struggling to orient itself.";
-  } else {
-    chance = 0.95;
+  if (instability < 25) {
+    chance = 0.25;
+    duration = 900;
+  } else if (instability < 75) {
+    chance = currentAnimal.puffMidChance;
     duration = 4200;
-    type = "puff-strong";
-    text = "The animal reels — a clear opening appears.";
+  } else {
+    chance = 0.45;
+    duration = 1500;
   }
 
   setTimeout(() => {
+    barPaused = false;
+
     if (Math.random() < chance) {
-      enterDizzy(type, duration, text);
+      pressure = 0;
+      enterDizzy(duration, "The animal is disoriented.");
     } else {
-      write("The disruption fails. The animal resists.");
+      instability += 15;
+      pressure += currentAnimal.pressureGain;
+      clamp();
+      updateBar();
+      write("The animal powers through the disruption.");
     }
-  }, 700);
+  }, 600);
 };
 
-// APPLY HERB
-herbBtn.onclick = () => {
-  if (state !== "dizzy" || dizzyType !== "puff-strong") return;
+feedBtn.onclick = () => {
+  if (state !== "dizzy") return;
 
   clearTimeout(dizzyTimer);
   state = "ritual";
+  barPaused = true;
   updateButtons();
 
   ritualProgress = 0;
-  pawContainer.style.opacity = 1;
   paw.style.height = "0%";
+  write("You begin the purification.");
 
-  write("You begin the purification ritual. Stay focused.");
-
-  ritualDecay = setInterval(() => {
-    ritualProgress = Math.max(0, ritualProgress - 5);
-    paw.style.height = ritualProgress + "%";
-
-    if (ritualProgress === 0) {
-      failRitual();
-    }
-  }, 300);
+  ritualTimeout = setTimeout(() => {
+    if (state === "ritual") failRitual();
+  }, currentAnimal.ritualTime);
 };
 
-// RITUAL INPUT
+/* Ritual input: click to fill */
 document.body.addEventListener("click", () => {
   if (state !== "ritual") return;
 
-  ritualProgress = Math.min(100, ritualProgress + 9);
+  ritualProgress += 12;
+  ritualProgress = Math.min(100, ritualProgress);
   paw.style.height = ritualProgress + "%";
 
-  if (ritualProgress >= 100) {
-    succeedRitual();
-  }
+  if (ritualProgress >= 100) succeedRitual();
 });
 
-/* ================== DIZZY HANDLER ================== */
-function enterDizzy(type, duration, text) {
+/* ================= EVENTS ================= */
+
+function enterDizzy(duration, text) {
   state = "dizzy";
-  dizzyType = type;
+  barPaused = true;
+  pressure = 0;
   updateButtons();
   write(text);
 
   dizzyTimer = setTimeout(() => {
-    if (state === "dizzy" && dizzyType === type) {
+    if (state === "dizzy") {
       state = "aggressive";
-      dizzyType = null;
-      write("The animal regains control.");
+      barPaused = false;
       updateButtons();
+      write("The animal regains control.");
     }
   }, duration);
 }
 
-/* ================== RESOLUTION ================== */
 function failRitual() {
-  clearInterval(ritualDecay);
-  resetRitual();
+  clearTimeout(ritualTimeout);
   state = "aggressive";
-  dizzyType = null;
-  resistance = Math.min(100, resistance + 15);
+  barPaused = false;
+  instability += 20;
+  pressure += currentAnimal.pressureGain;
+  clamp();
+  updateBar();
+  updateButtons();
   write("The ritual breaks. The animal surges back.");
+}
+
+function succeedRitual() {
+  clearTimeout(ritualTimeout);
+  state = "purified";
+  barPaused = true;
+  paw.style.height = "100%";
+  updateButtons();
+  write("Balance is restored. The animal retreats.");
+}
+
+/* ================= ANIMAL SWITCH ================= */
+
+function setAnimal(key) {
+  currentAnimal = ANIMALS[key];
+  title.innerText = currentAnimal.name;
+  instability = 50;
+  pressure = 0;
+  state = "aggressive";
+  barPaused = false;
+  paw.style.height = "0%";
+  write(currentAnimal.name + " stands before you.");
   updateBar();
   updateButtons();
 }
 
-function succeedRitual() {
-  clearInterval(ritualDecay);
-  state = "purified";
-  dizzyType = null;
-  paw.style.height = "100%";
-  bar.style.background = "#2ecc71";
-  write("Balance is restored. The animal retreats.");
-  updateButtons();
-}
+/* ================= INIT ================= */
 
-/* ================== INIT ================== */
-write("An imbalanced animal blocks your path.");
-updateBar();
-updateButtons();
+setAnimal("wolf");
 </script>
 
 </body>

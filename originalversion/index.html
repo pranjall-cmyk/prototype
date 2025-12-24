@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Curse Threshold Prototype (Fixed)</title>
+
+<style>
+  body {
+    background:#0f0f0f;
+    color:#eee;
+    font-family:system-ui, sans-serif;
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    height:100vh;
+    gap:20px;
+  }
+
+  h3 { margin-bottom:8px; }
+
+  /* MAIN BAR */
+  .bar-wrapper {
+    position:relative;
+    width:520px;
+    height:18px;
+    background:#2b2b2b;
+    border-radius:9px;
+    overflow:hidden;
+  }
+
+  .curse-bar {
+    height:100%;
+    width:100%;
+    background:#ff5c5c;
+    transition:width 0.25s linear;
+  }
+
+  .threshold {
+    position:absolute;
+    left:45%;
+    top:-6px;
+    width:4px;
+    height:30px;
+    background:#000;
+    z-index:3;
+  }
+
+  /* PURPLE CAPSULE */
+  .ritual-container {
+    width:160px;
+    height:12px;
+    margin-top:6px;
+    background:#1f1f1f;
+    border-radius:6px;
+    overflow:hidden;
+    opacity:0;
+    transition:opacity 0.2s ease;
+  }
+
+  .ritual-fill {
+    height:100%;
+    width:100%;
+    background:#6c5ce7;
+    transition:width 0.15s linear;
+  }
+
+  .ritual-container.active {
+    opacity:1;
+  }
+
+  .buttons {
+    display:flex;
+    gap:12px;
+    margin-top:10px;
+  }
+
+  button {
+    padding:10px 16px;
+    border:none;
+    border-radius:6px;
+    font-size:14px;
+    cursor:pointer;
+  }
+
+  button:disabled {
+    opacity:0.4;
+    cursor:not-allowed;
+  }
+
+  .log {
+    width:520px;
+    min-height:44px;
+    text-align:center;
+    opacity:0.85;
+  }
+</style>
+</head>
+
+<body>
+
+<h3>Curse State</h3>
+
+<div class="bar-wrapper">
+  <div id="curseBar" class="curse-bar"></div>
+  <div class="threshold"></div>
+</div>
+
+<div id="ritualContainer" class="ritual-container">
+  <div id="ritualBar" class="ritual-fill"></div>
+</div>
+
+<div class="buttons">
+  <button id="attackBtn">Attack</button>
+  <button id="puffBtn">Throw Puff Ball</button>
+  <button id="herbBtn">Apply Herb</button>
+</div>
+
+<div id="log" class="log"></div>
+
+<script>
+/* ===== STATE ===== */
+let curse = 100;
+const THRESHOLD = 45;
+let ritualActive = false;
+let ritualValue = 100;
+let ritualTimer = null;
+let puffUsed = false;
+let safeCursePoint = 100;
+
+/* ===== ELEMENTS ===== */
+const curseBar = document.getElementById("curseBar");
+const ritualBar = document.getElementById("ritualBar");
+const ritualContainer = document.getElementById("ritualContainer");
+const log = document.getElementById("log");
+
+const attackBtn = document.getElementById("attackBtn");
+const puffBtn = document.getElementById("puffBtn");
+const herbBtn = document.getElementById("herbBtn");
+
+/* ===== HELPERS ===== */
+function write(text) {
+  log.innerText = text;
+}
+
+function updateCurse() {
+  curseBar.style.width = curse + "%";
+}
+
+/* ===== RITUAL FLOW ===== */
+function startRitual() {
+  ritualActive = true;
+  puffUsed = false;
+  ritualValue = 100;
+
+  ritualBar.style.width = "100%";
+  ritualContainer.classList.add("active");
+
+  write("The curse is unstable. You must act now.");
+
+  ritualTimer = setInterval(() => {
+    ritualValue -= 2;
+    ritualBar.style.width = ritualValue + "%";
+
+    if (ritualValue <= 0) {
+      failRitual();
+    }
+  }, 180);
+}
+
+function failRitual() {
+  clearInterval(ritualTimer);
+  ritualActive = false;
+  ritualContainer.classList.remove("active");
+
+  curse = safeCursePoint;
+  updateCurse();
+
+  write("The curse reasserts itself.");
+}
+
+function succeedRitual() {
+  clearInterval(ritualTimer);
+  ritualActive = false;
+  ritualContainer.classList.remove("active");
+
+  write("The curse is lifted. The animal is freed.");
+}
+
+/* ===== ACTIONS ===== */
+
+// ATTACK
+attackBtn.onclick = () => {
+  if (ritualActive) return;
+
+  curse -= 6;
+  curse = Math.max(0, curse);
+  updateCurse();
+
+  write("You weaken the curse.");
+
+  if (curse <= THRESHOLD) {
+    safeCursePoint = curse + 60;
+    startRitual();
+  }
+};
+
+// PUFF BALL
+puffBtn.onclick = () => {
+  if (!ritualActive) {
+    write("The curse is too stable.");
+    return;
+  }
+
+  puffUsed = true;
+  write("The puff ball disrupts the curse.");
+};
+
+// APPLY HERB
+herbBtn.onclick = () => {
+  if (!ritualActive || !puffUsed) {
+    write("This is not the moment.");
+    return;
+  }
+
+  succeedRitual();
+};
+
+/* ===== INIT ===== */
+write("An imbalanced animal stands before you.");
+updateCurse();
+</script>
+
+</body>
+</html>
