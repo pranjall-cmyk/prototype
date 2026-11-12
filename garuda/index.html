@@ -11,7 +11,8 @@
   .row { display:flex; align-items:center; gap:6px; margin:3px 0; }
   .row label { width:150px; }
   .row input[type=range] { flex:1; }
-  .row span { width:44px; text-align:right; font-variant-numeric: tabular-nums; }
+  .row span { width:40px; text-align:right; font-variant-numeric: tabular-nums; }
+  .row input.num { width:58px; background:#101114; color:#ddd; border:1px solid #444; border-radius:4px; padding:3px 4px; text-align:right; font-variant-numeric: tabular-nums; }
   button { background:#2d2f38; color:#ddd; border:1px solid #444; border-radius:4px; padding:5px 8px; cursor:pointer; margin:2px 2px 2px 0; }
   button:hover { background:#3a3d48; }
   #log { height:190px; overflow:auto; background:#101114; border-radius:6px; padding:6px; font-family: monospace; font-size:11px; line-height:1.4; }
@@ -36,7 +37,7 @@
     <button id="reset">Reset fight</button>
   </div>
 
-  <h3>Bell / pulse tuning</h3>
+  <h3>Bell / pulse tuning <span style="float:right;font-weight:normal;color:#999;font-size:11px">slider max</span></h3>
   <div id="sliders"></div>
 
   <h3>Hit log</h3>
@@ -50,7 +51,7 @@ const ARENA_R = 320;
 
 const P = {
   pulses:     { v:11,  min:1,   max:20,  step:1,    label:'Pulses per strike' },
-  interval:   { v:1.15,min:0.1, max:4, step:0.05, label:'Gap between pulses (s)' },
+  interval:   { v:1.15,min:0.1, max:1.5, step:0.05, label:'Gap between pulses (s)' },
   speed:      { v:170, min:100, max:1000,step:10,   label:'Halo expand speed (px/s)' },
   bellDist:   { v:275, min:80,  max:300, step:5,    label:'Bell distance from center' },
   R0:         { v:475, min:100, max:700, step:5,    label:'Pulse 1 max reach (px)' },
@@ -69,9 +70,15 @@ const sl = document.getElementById('sliders');
 for (const k in P) {
   const p = P[k];
   const row = document.createElement('div'); row.className='row';
-  row.innerHTML = `<label>${p.label}</label><input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.v}"><span>${p.v}</span>`;
-  const inp = row.querySelector('input'), sp = row.querySelector('span');
+  row.innerHTML = `<label>${p.label}</label><input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.v}"><span>${p.v}</span><input type="number" class="num" step="any" value="${p.max}" title="Slider max">`;
+  const inp = row.querySelector('input[type=range]'), sp = row.querySelector('span'), mx = row.querySelector('input.num');
   inp.oninput = () => { p.v = parseFloat(inp.value); sp.textContent = p.v; if (k==='segments'||k==='segSize') resetFight(); };
+  mx.onchange = () => {
+    const m = parseFloat(mx.value);
+    if (isNaN(m) || m <= parseFloat(inp.min)) { mx.value = inp.max; return; }
+    inp.max = m;
+    if (p.v > m) { p.v = m; inp.value = m; sp.textContent = m; if (k==='segments'||k==='segSize') resetFight(); }
+  };
   sl.appendChild(row);
 }
 const v = k => P[k].v;
@@ -154,6 +161,7 @@ cv.onmousedown = e => {
 cv.onmousemove = e => { if (garuda.drag){ const m=mpos(e); garuda.x=m.x; garuda.y=m.y; } };
 window.onmouseup = () => garuda.drag=false;
 window.onkeydown = e => {
+  if (e.target.tagName === 'INPUT' && e.target.type === 'number') return; // typing a value shouldn't strike bells
   if (e.key==='1'||e.key==='2'||e.key==='3') strike(parseInt(e.key)-1);
   if (e.key==='h'||e.key==='H') damage(v('stickDmg'), 'Stick hit  CURSE -'+v('stickDmg'));
   if (e.key==='f'||e.key==='F') feeding=true;
