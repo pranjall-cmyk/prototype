@@ -5,8 +5,8 @@
 <title>Garuda Bells Prototype</title>
 <style>
   body { margin:0; background:#15161a; color:#ddd; font-family: system-ui, sans-serif; display:flex; gap:16px; padding:16px; }
-  canvas { background:#1f2026; border-radius:8px; cursor:pointer; }
-  #side { width:340px; font-size:13px; }
+  canvas { background:#1f2026; border-radius:8px; cursor:pointer; flex-shrink:0; height:min(760px, calc(100vh - 32px)); aspect-ratio:1/1; width:auto; }
+  #side { width:380px; flex-shrink:0; font-size:13px; }
   h3 { margin:8px 0 6px; font-size:14px; color:#fff; }
   .row { display:flex; align-items:center; gap:6px; margin:3px 0; }
   .row label { width:150px; }
@@ -152,7 +152,7 @@ function endDaze(success){
 }
 
 // ---------- input ----------
-function mpos(e){ const b=cv.getBoundingClientRect(); return {x:e.clientX-b.left, y:e.clientY-b.top}; }
+function mpos(e){ const b=cv.getBoundingClientRect(); return {x:(e.clientX-b.left)*W/b.width, y:(e.clientY-b.top)*H/b.height}; }
 cv.onmousedown = e => {
   const m = mpos(e);
   if (Math.hypot(m.x-garuda.x, m.y-garuda.y) < garuda.r+6){ garuda.drag=true; return; }
