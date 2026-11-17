@@ -4,27 +4,31 @@
 <meta charset="UTF-8">
 <title>Garuda Bells Prototype (Unreal units)</title>
 <style>
-  body { margin:0; background:#15161a; color:#ddd; font-family: system-ui, sans-serif; display:flex; gap:16px; padding:16px; }
-  canvas { background:#1f2026; border-radius:8px; flex-shrink:0; height:min(760px, calc(100vh - 32px)); aspect-ratio:1/1; width:auto; }
-  #side { width:400px; flex-shrink:0; font-size:13px; max-height:calc(100vh - 32px); overflow:auto; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; }
+  body { margin:0; background:#15161a; color:#ddd; font-family: system-ui, sans-serif; display:flex; gap:16px; padding:16px; overflow:hidden; }
+  canvas { background:#1f2026; border-radius:8px; flex-shrink:0; height:min(calc(100vh - 32px), 52vw); aspect-ratio:1/1; width:auto; }
+  #side { flex:1; min-width:0; height:calc(100vh - 32px); overflow:auto; display:grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap:16px; align-content:start; font-size:13px; }
+  .panel { background:#1b1c22; border-radius:8px; padding:4px 12px 12px; }
   h3 { margin:10px 0 6px; font-size:14px; color:#fff; }
-  .row { display:flex; align-items:center; gap:6px; margin:3px 0; }
+  .row { display:flex; align-items:center; gap:6px; margin:1px 0; padding:1px 2px; border-radius:4px; }
   .row label { width:150px; }
-  .row input[type=range] { flex:1; }
+  .row input[type=range] { flex:1; min-width:60px; }
   .row span { width:44px; text-align:right; font-variant-numeric: tabular-nums; }
-  .row input.num { width:58px; background:#101114; color:#ddd; border:1px solid #444; border-radius:4px; padding:3px 4px; text-align:right; }
+  .row input.num { width:68px; background:#101114; color:#ddd; border:1px solid #444; border-radius:4px; padding:3px 4px; text-align:right; }
   button { background:#2d2f38; color:#ddd; border:1px solid #444; border-radius:4px; padding:5px 8px; cursor:pointer; margin:2px 2px 2px 0; }
   button:hover { background:#3a3d48; }
   .log { overflow:auto; background:#101114; border-radius:6px; padding:6px; font-family: monospace; font-size:11px; line-height:1.4; }
-  #log { height:170px; } #legs { height:110px; }
+  #legs { height:130px; } #log { height:max(120px, calc(100vh - 760px)); }
   .dmg { color:#ff8a7a; } .time { color:#8fd3ff; } .ok { color:#9be59b; } .fail { color:#ffb84d; } .leg { color:#e6c3ff; }
   .help { color:#999; line-height:1.5; }
   .hint { float:right; font-weight:normal; color:#999; font-size:11px; }
 </style>
 </head>
 <body>
-<canvas id="c" width="760" height="760"></canvas>
+<canvas id="c"></canvas>
 <div id="side">
+ <div class="panel">
   <h3>Controls</h3>
   <div class="help">
     All distances are Unreal units (uu), speeds are uu/s.<br>
@@ -32,7 +36,8 @@
     E = strike the bell you are standing at (Durga is locked during the strike).<br>
     Hold F = feed leaf (next to a dazed Garuda; Durga can't move while feeding; progress is kept if she leaves).<br>
     H = stick hit (next to Garuda, not dazed). G = force daze.<br>
-    Drag Garuda, Durga or any bell with the mouse. 1/2/3 = debug strike from anywhere.
+    Drag Garuda, Durga or any bell with the mouse. 1/2/3 = debug strike from anywhere.<br>
+    Hover any slider to see what it changes.
   </div>
   <div>
     <button id="test">Start daze test</button>
@@ -41,32 +46,30 @@
     <button id="reset">Reset fight</button>
     <button id="layout">Reset bell layout</button>
   </div>
-
   <h3>Leg times <span class="hint">center / bell to bell</span></h3>
   <div id="legs" class="log"></div>
-
-  <div id="sliders"></div>
-
   <h3>Hit log</h3>
   <div id="log" class="log"></div>
-
   <h3>Saved setups</h3>
   <div class="row">
     <input id="saveName" type="text" placeholder="Name this setup" style="flex:1;background:#101114;color:#ddd;border:1px solid #444;border-radius:4px;padding:5px 6px;">
     <button id="saveBtn">Save</button>
   </div>
-  <div id="slots" class="log" style="height:auto;max-height:220px;font-family:system-ui;font-size:12px;"></div>
+  <div id="slots" class="log" style="height:auto;max-height:260px;font-family:system-ui;font-size:12px;"></div>
   <div style="margin-top:6px">
     <button id="exportBtn">Export all to file</button>
     <button id="importBtn">Import from file</button>
     <input id="importFile" type="file" accept=".json" style="display:none">
   </div>
   <div class="help" style="margin-top:4px">Saves live in this browser. Export to a file as a backup or to move them to another PC.</div>
+ </div>
+
+ <div class="panel" id="sliders1"></div>
 </div>
 
 <script>
 const cv = document.getElementById('c'), ctx = cv.getContext('2d');
-const W = cv.width, H = cv.height, CX = W/2, CY = H/2 + 30, ARENA_PX = 340;
+const W = 760, H = 760, CX = W/2, CY = H/2 + 30, ARENA_PX = 340;
 
 const GROUPS = [
  ['Durga', {
@@ -105,8 +108,9 @@ const GROUPS = [
  }],
 ];
 const P = {};
-const sl = document.getElementById('sliders');
+const sl1 = document.getElementById('sliders1');
 for (const [title, group] of GROUPS) {
+  const sl = sl1;
   const h = document.createElement('h3'); h.innerHTML = `${title} <span class="hint">slider max</span>`; sl.appendChild(h);
   for (const k in group) {
     const p = group[k]; P[k] = p;
@@ -391,6 +395,7 @@ function tick(){
 function circle(x,y,r){ ctx.beginPath(); ctx.arc(sx(x),sy(y),Math.max(1,r*S()),0,Math.PI*2); }
 
 function draw(now, feeding){
+  ctx.setTransform(cv.width/W, 0, 0, cv.height/H, 0, 0);
   ctx.clearRect(0,0,W,H);
   ctx.fillStyle='#2a2c34'; circle(0,0,v('arenaR')); ctx.fill();
   ctx.strokeStyle='#3c3f4a'; ctx.setLineDash([4,6]); circle(0,0,CENTER_ZONE); ctx.stroke(); ctx.setLineDash([]);
@@ -618,6 +623,12 @@ document.getElementById('importFile').onchange = e => {
   });
 };
 
+function fitCanvas(){
+  const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+  cv.width = Math.round(r.width*dpr); cv.height = Math.round(r.height*dpr);
+}
+window.addEventListener('resize', fitCanvas);
+fitCanvas();
 layoutBells();
 resetFight();
 renderSlots();
