@@ -96,10 +96,11 @@ const GROUPS = [
   fanDist:    { v:2600, min:500, max:6000, step:10,   label:'Fan distance from center' },
  }],
  ['Garuda (ground)', {
+  segCount:   { v:4,    min:3,   max:4,    step:1,    label:'Number of segments' },
   seg1:       { v:100,  min:10,  max:400,  step:5,    label:'Segment 1 curse' },
   seg2:       { v:100,  min:10,  max:400,  step:5,    label:'Segment 2 curse' },
   seg3:       { v:100,  min:10,  max:400,  step:5,    label:'Segment 3 curse' },
-  seg4:       { v:80,   min:10,  max:400,  step:5,    label:'Segment 4 curse (last)' },
+  seg4:       { v:80,   min:10,  max:400,  step:5,    label:'Segment 4 curse' },
   regen:      { v:0.5,  min:0,   max:5,    step:0.05, label:'Curse regen (per s)' },
   stickDmg:   { v:8,    min:0,   max:50,   step:1,    label:'Stick hit damage' },
   hitGap:     { v:0.35, min:0,   max:2,    step:0.05, label:'Min time between hits (s)' },
@@ -160,7 +161,7 @@ const DESC = {
   arenaR:'Size of the arena floor.', bellDist:'How far each bell sits from the center.',
   fanDist:'How far each wind fan sits from the center. Lines show which fan is roped to which bell.',
   segments:'Number of curse segments. A flight follows every segment except the last.',
-  seg1:'Curse in the first segment Durga empties (right end of the bar).', seg2:'Curse in the second segment.', seg3:'Curse in the third segment.', seg4:'Curse in the last segment. Emptying it puts Garuda to sleep; a failed feed refills only this one.', regen:'Curse refill per second on the ground (only up to the current divider).',
+  segCount:'3 or 4 segments. With 3, segment 3 is the last one (sleep after it) and segment 4 is ignored.', seg1:'Curse in the first segment Durga empties (right end of the bar).', seg2:'Curse in the second segment.', seg3:'Curse in the third segment.', seg4:'Curse in segment 4 (only used with 4 segments). The last segment puts Garuda to sleep; a failed feed refills only that one.', regen:'Curse refill per second on the ground (only up to the current divider).',
   stickDmg:'Curse removed by one stick hit.', hitGap:'Shortest time between two stick hits (swing time).', garudaR:'Garuda body size. Pulses hit when they touch this.',
   groundSpeed:'How fast Garuda walks toward Durga (scaled by movement scale, like Durga).', lungeEvery:'Time between low-flying lunges. He only lunges when Durga is within reach of it.', lungeWindup:'Warning before a lunge (red arrow shows the path).', lungeSpeed:'How fast the lunge travels (scaled by movement scale).', lungeDist:'How far one lunge travels.', lungeRecover:'Garuda stands still this long after a lunge. Good window to hit him.', keepDist:'Garuda stops closing in at this distance.',
   gustEvery:'Time between gusts on the ground.', gustWindup:'Warning time before a gust fires (the line shows the aim).',
@@ -189,7 +190,7 @@ for (const [title, group] of GROUPS) {
     row.onmouseleave = () => { if (hl===k) hl=null; row.style.background=''; };
     row.innerHTML = `<label>${p.label}</label><input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.v}"><span>${p.v}</span><input type="number" class="num" step="any" value="${p.max}" title="Slider max">`;
     const inp = row.querySelector('input[type=range]'), sp = row.querySelector('span'), mx = row.querySelector('input.num');
-    const changed = () => { if (/^seg\d$/.test(k)) startFight(); if (k==='bellDist'||k==='fanDist') layout(); };
+    const changed = () => { if (/^seg\d$/.test(k) || k==='segCount') startFight(); if (k==='bellDist'||k==='fanDist') layout(); };
     inp.oninput = () => { p.v = parseFloat(inp.value); sp.textContent = p.v; changed(); };
     mx.onchange = () => {
       const m = parseFloat(mx.value);
@@ -202,7 +203,7 @@ for (const [title, group] of GROUPS) {
       if (val > parseFloat(inp.max)) { inp.max = val; mx.value = val; }
       p.v = val; inp.value = val; sp.textContent = val;
     };
-    p.getMax = () => parseFloat(inp.max);
+    p.getMax = () => parseFloat(inp.max); p.row = row;
     sl.appendChild(row);
   }
 }
@@ -216,7 +217,7 @@ const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
 // ---------- state ----------
 const DURGA_R = 45, BELL_R = 100, FAN_R = 140, CENTER_ZONE = 400;
 let bells=[], fans=[], garuda, durga, gusts=[], floaters=[];
-const SEGS=4; let segIdx=0; const sizes = () => [v('seg1'),v('seg2'),v('seg3'),v('seg4')]; const totalCurse = () => sizes().reduce((a,b)=>a+b,0);
+let SEGS=4, segIdx=0; const sizes = () => [v('seg1'),v('seg2'),v('seg3'),v('seg4')].slice(0, SEGS); const totalCurse = () => sizes().reduce((a,b)=>a+b,0);
 let deaths=0, phase, curse, segTop, flightLeft, feed, timer, timerPeak, sleepStart, durgaHits, fightStart;
 const keys = {};
 
@@ -235,6 +236,7 @@ function startFight(){
   garuda = { x:0, y:-600, fly:0, gustT:v('gustEvery'), windup:0, aim:null, lungeT:v('lungeEvery'), lunge:null };
   durga = { x:0, y:900, dir:{x:0,y:-1}, lock:0, lockAction:null, lockKind:null, hp:v('hpMax'), stam:v('stamMax'), stamWait:0, invuln:0, dashLeft:0, knock:null, combo:0, hitCD:0, lastHit:-99, dodgeLeft:0, dodgeCD:0, dodgeVec:null, carrying:null, zone:null, leaveZone:null, leaveTime:0 };
   gusts=[]; floaters=[]; durgaHits=0; deaths=0;
+  SEGS = v('segCount'); P.seg4.row.style.opacity = SEGS===4 ? '' : '0.35';
   segIdx=0; curse = totalCurse(); segTop = curse;
   phase='ground'; fightStart = now();
   log(`FIGHT START. Segments ${sizes().join(' / ')}. Bell 1 up, bells 2 and 3 down.`, 'phase');
@@ -263,7 +265,7 @@ function endSleep(success){
   const took = now()-sleepStart;
   if (success){ phase='done'; log(`FEED SUCCESS after ${took.toFixed(1)}s (${timer.toFixed(1)}s spare). GARUDA PURIFIED. Fight took ${(now()-fightStart).toFixed(0)}s.`, 'ok'); }
   else { segIdx = SEGS-1; segTop = sizes()[SEGS-1]; curse = segTop; phase='ground'; garuda.gustT=v('gustEvery');
-    log(`FEED FAILED after ${took.toFixed(1)}s (feed ${feed.toFixed(0)}%). Segment 4 refills, back to ground.`, 'fail'); }
+    log(`FEED FAILED after ${took.toFixed(1)}s (feed ${feed.toFixed(0)}%). Last segment refills, back to ground.`, 'fail'); }
 }
 function damage(amount, msg){
   if (phase!=='ground') return;
@@ -653,7 +655,7 @@ function drawHighlight(){
   if (hl==='fanDist'){ for (const f of fans){ circle(f.x,f.y,FAN_R*1.5); ctx.stroke(); const b=bells[f.i]; ctx.setLineDash([6,5]); ctx.beginPath(); ctx.moveTo(sx(f.x),sy(f.y)); ctx.lineTo(sx(b.x),sy(b.y)); ctx.stroke(); ctx.setLineDash([]);
       tag((sx(f.x)+sx(b.x))/2,(sy(f.y)+sy(b.y))/2, `fan→bell run ${((dist(f,b)-v('reach')*2-BELL_R-FAN_R)/runE).toFixed(1)}s`); } }
   if (hl==='regen') ctx.strokeRect((W-480)/2-32,12,484,18);
-  if (/^seg\d$/.test(hl)){ const sz=sizes(), tot=totalCurse(), n=+hl[3]-1, bx=(W-480)/2-30; let top=tot; for (let i=0;i<n;i++) top-=sz[i];
+  if (/^seg\d$/.test(hl) && +hl[3]<=SEGS){ const sz=sizes(), tot=totalCurse(), n=+hl[3]-1, bx=(W-480)/2-30; let top=tot; for (let i=0;i<n;i++) top-=sz[i];
     ctx.strokeRect(bx+480*(top-sz[n])/tot, 12, 480*sz[n]/tot, 18); }
   if (hl==='regen') tag(W/2, 64, `Refills the current segment (${sizes()[Math.min(segIdx,SEGS-1)]}) in ${(sizes()[Math.min(segIdx,SEGS-1)]/Math.max(0.001,v('regen'))).toFixed(0)}s if untouched`);
   if (['stickDmg','garudaR','groundSpeed'].includes(hl)){ circle(garuda.x,garuda.y,v('garudaR')); ctx.stroke(); }
