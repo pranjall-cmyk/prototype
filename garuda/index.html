@@ -78,9 +78,7 @@ const GROUPS = [
   sprintSpeed:{ v:650,  min:50,  max:1500, step:10,   label:'Sprint speed' },
   speedMult:  { v:1.69, min:0.25,max:4,    step:0.01, label:'Movement scale' },
   dodgeDist:  { v:450,  min:0,   max:1500, step:10,   label:'Dodge distance' },
-  dodgeTime:  { v:1.2,  min:0.1, max:3,    step:0.05, label:'Dodge duration (s)' },
   dodgeDash:  { v:0.35, min:0.05,max:1.5,  step:0.05, label:'Dodge burst time (s)' },
-  dodgeCD:    { v:0,    min:0,   max:3,    step:0.05, label:'Dodge cooldown (s)' },
   strikeTime: { v:2.64, min:0,   max:5,    step:0.01, label:'Bell strike time (s)' },
   tieTime:    { v:2,    min:0,   max:10,   step:0.1,  label:'Rope tie time (s)' },
   reach:      { v:200,  min:20,  max:800,  step:10,   label:'Interact range' },
@@ -98,8 +96,10 @@ const GROUPS = [
   fanDist:    { v:2600, min:500, max:6000, step:10,   label:'Fan distance from center' },
  }],
  ['Garuda (ground)', {
-  segments:   { v:4,    min:1,   max:8,    step:1,    label:'Curse segments' },
-  segSize:    { v:100,  min:20,  max:300,  step:10,   label:'Curse per segment' },
+  seg1:       { v:100,  min:10,  max:400,  step:5,    label:'Segment 1 curse' },
+  seg2:       { v:100,  min:10,  max:400,  step:5,    label:'Segment 2 curse' },
+  seg3:       { v:100,  min:10,  max:400,  step:5,    label:'Segment 3 curse' },
+  seg4:       { v:80,   min:10,  max:400,  step:5,    label:'Segment 4 curse (last)' },
   regen:      { v:0.5,  min:0,   max:5,    step:0.05, label:'Curse regen (per s)' },
   stickDmg:   { v:8,    min:0,   max:50,   step:1,    label:'Stick hit damage' },
   hitGap:     { v:0.35, min:0,   max:2,    step:0.05, label:'Min time between hits (s)' },
@@ -153,14 +153,14 @@ const DESC = {
   stamRegen:'Stamina refill per second.', stamDelay:'Stamina waits this long after a dodge or hit before refilling.',
   hurtInvuln:'After taking a hit, Durga cannot be hit again for this long.',
   gustDmg:'Health a gust takes from Durga.', gustKnock:'How far a gust pushes Durga.', lungeDmg:'Health a lunge takes from Durga.', lungeKnock:'How far a lunge pushes Durga.',
-  dodgeTime:'Full dodge length. The next dodge is only allowed after this (plus cooldown).', dodgeCD:'Wait after a dodge before the next one.',
+
   strikeTime:'Durga is locked this long striking a bell before it rings.',
   tieTime:'Durga is locked this long tying a bell rope to its fan. Getting hit while carrying or tying drops the rope.',
   reach:'How close Durga must be to ring, take rope, tie rope, hit or feed.',
   arenaR:'Size of the arena floor.', bellDist:'How far each bell sits from the center.',
   fanDist:'How far each wind fan sits from the center. Lines show which fan is roped to which bell.',
   segments:'Number of curse segments. A flight follows every segment except the last.',
-  segSize:'Curse in each segment.', regen:'Curse refill per second on the ground (only up to the current divider).',
+  seg1:'Curse in the first segment Durga empties (right end of the bar).', seg2:'Curse in the second segment.', seg3:'Curse in the third segment.', seg4:'Curse in the last segment. Emptying it puts Garuda to sleep; a failed feed refills only this one.', regen:'Curse refill per second on the ground (only up to the current divider).',
   stickDmg:'Curse removed by one stick hit.', hitGap:'Shortest time between two stick hits (swing time).', garudaR:'Garuda body size. Pulses hit when they touch this.',
   groundSpeed:'How fast Garuda walks toward Durga (scaled by movement scale, like Durga).', lungeEvery:'Time between low-flying lunges. He only lunges when Durga is within reach of it.', lungeWindup:'Warning before a lunge (red arrow shows the path).', lungeSpeed:'How fast the lunge travels (scaled by movement scale).', lungeDist:'How far one lunge travels.', lungeRecover:'Garuda stands still this long after a lunge. Good window to hit him.', keepDist:'Garuda stops closing in at this distance.',
   gustEvery:'Time between gusts on the ground.', gustWindup:'Warning time before a gust fires (the line shows the aim).',
@@ -189,7 +189,7 @@ for (const [title, group] of GROUPS) {
     row.onmouseleave = () => { if (hl===k) hl=null; row.style.background=''; };
     row.innerHTML = `<label>${p.label}</label><input type="range" min="${p.min}" max="${p.max}" step="${p.step}" value="${p.v}"><span>${p.v}</span><input type="number" class="num" step="any" value="${p.max}" title="Slider max">`;
     const inp = row.querySelector('input[type=range]'), sp = row.querySelector('span'), mx = row.querySelector('input.num');
-    const changed = () => { if (k==='segments'||k==='segSize') startFight(); if (k==='bellDist'||k==='fanDist') layout(); };
+    const changed = () => { if (/^seg\d$/.test(k)) startFight(); if (k==='bellDist'||k==='fanDist') layout(); };
     inp.oninput = () => { p.v = parseFloat(inp.value); sp.textContent = p.v; changed(); };
     mx.onchange = () => {
       const m = parseFloat(mx.value);
@@ -216,6 +216,7 @@ const dist = (a,b) => Math.hypot(a.x-b.x, a.y-b.y);
 // ---------- state ----------
 const DURGA_R = 45, BELL_R = 100, FAN_R = 140, CENTER_ZONE = 400;
 let bells=[], fans=[], garuda, durga, gusts=[], floaters=[];
+const SEGS=4; let segIdx=0; const sizes = () => [v('seg1'),v('seg2'),v('seg3'),v('seg4')]; const totalCurse = () => sizes().reduce((a,b)=>a+b,0);
 let deaths=0, phase, curse, segTop, flightLeft, feed, timer, timerPeak, sleepStart, durgaHits, fightStart;
 const keys = {};
 
@@ -234,17 +235,17 @@ function startFight(){
   garuda = { x:0, y:-600, fly:0, gustT:v('gustEvery'), windup:0, aim:null, lungeT:v('lungeEvery'), lunge:null };
   durga = { x:0, y:900, dir:{x:0,y:-1}, lock:0, lockAction:null, lockKind:null, hp:v('hpMax'), stam:v('stamMax'), stamWait:0, invuln:0, dashLeft:0, knock:null, combo:0, hitCD:0, lastHit:-99, dodgeLeft:0, dodgeCD:0, dodgeVec:null, carrying:null, zone:null, leaveZone:null, leaveTime:0 };
   gusts=[]; floaters=[]; durgaHits=0; deaths=0;
-  curse = v('segments')*v('segSize'); segTop = curse;
+  segIdx=0; curse = totalCurse(); segTop = curse;
   phase='ground'; fightStart = now();
-  log(`FIGHT START. ${v('segments')} segments. Bell 1 up, bells 2 and 3 down.`, 'phase');
+  log(`FIGHT START. Segments ${sizes().join(' / ')}. Bell 1 up, bells 2 and 3 down.`, 'phase');
 }
 const now = () => performance.now()/1000;
 
 // ---------- phases ----------
 function breakSegment(){
-  segTop -= v('segSize'); curse = segTop;
-  const left = Math.round(segTop / v('segSize'));
-  if (segTop <= 0){
+  segTop -= sizes()[segIdx]; segIdx++; curse = segTop;
+  const left = SEGS - segIdx;
+  if (segIdx >= SEGS){
     phase='sleep'; feed=0; timer=v('baseTimer'); timerPeak=timer; sleepStart=now(); gusts=[];
     log(`LAST SEGMENT BROKEN. Garuda sleeps. Feed timer ${timer.toFixed(1)}s. Bells up: ${bells.filter(b=>b.up).length}/3`, 'phase');
   } else {
@@ -261,7 +262,7 @@ function land(){
 function endSleep(success){
   const took = now()-sleepStart;
   if (success){ phase='done'; log(`FEED SUCCESS after ${took.toFixed(1)}s (${timer.toFixed(1)}s spare). GARUDA PURIFIED. Fight took ${(now()-fightStart).toFixed(0)}s.`, 'ok'); }
-  else { segTop = v('segSize'); curse = segTop; phase='ground'; garuda.gustT=v('gustEvery');
+  else { segIdx = SEGS-1; segTop = sizes()[SEGS-1]; curse = segTop; phase='ground'; garuda.gustT=v('gustEvery');
     log(`FEED FAILED after ${took.toFixed(1)}s (feed ${feed.toFixed(0)}%). Segment 4 refills, back to ground.`, 'fail'); }
 }
 function damage(amount, msg){
@@ -269,7 +270,7 @@ function damage(amount, msg){
   curse = Math.max(0, curse-amount);
   floaters.push({ x:garuda.x, y:garuda.y, txt:'-'+amount.toFixed(1), col:'#ff8a7a', t:1 });
   log(msg, 'dmg');
-  if (curse <= segTop - v('segSize') + 1e-6) breakSegment();
+  if (curse <= segTop - sizes()[segIdx] + 1e-6) breakSegment();
 }
 
 // ---------- bells / pulses ----------
@@ -314,10 +315,10 @@ function lockFor(t, fn, kind){ durga.lock=t; durga.lockAction=fn; durga.lockKind
 function tie(i){ bells[i].tied=true; durga.carrying=null; log(`Bell ${i+1} rope tied to fan ${i+1}. Gusts through fan ${i+1} will hoist it.`, 'ok'); }
 function useStam(c){ if (durga.stam < c) return false; durga.stam-=c; durga.stamWait=v('stamDelay'); return true; }
 function tryDodge(){
-  if (busy() || durga.dodgeCD > 0) return;
+  if (durga.lock > 0) return; // can't dodge out of a bell strike or rope tie; otherwise only stamina limits it
   if (!useStam(v('dodgeCost'))){ floaters.push({ x:durga.x, y:durga.y, txt:'NO STAMINA', col:'#ffb84d', t:0.8 }); return; }
   const mv=moveInput(); durga.dodgeVec=(mv.x||mv.y)?mv:durga.dir;
-  durga.dashLeft=v('dodgeDash'); durga.dodgeCD=v('dodgeTime')+v('dodgeCD');
+  durga.dashLeft=v('dodgeDash');
 }
 function dropRope(why){
   if (durga.carrying===null) return;
@@ -365,7 +366,7 @@ window.onkeydown = e => {
     damage(v('stickDmg'), `Stick hit  CURSE -${v('stickDmg')}`);
   }
   if (k===' ') tryDodge();
-  if (k==='g' && phase==='ground'){ curse = segTop - v('segSize'); breakSegment(); }
+  if (k==='g' && phase==='ground'){ curse = segTop - sizes()[segIdx]; breakSegment(); }
 };
 window.onkeyup = e => { keys[e.key.toLowerCase()]=false; };
 window.onblur = () => { for (const k in keys) keys[k]=false; };
@@ -375,7 +376,7 @@ document.getElementById('layout').onclick = layout;
 document.getElementById('sleepTest').onclick = () => {
   startFight(); bells.forEach(b => { b.up=true; b.tied=true; });
   garuda.x=0; garuda.y=0; durga.x=0; durga.y=v('garudaR')+DURGA_R+20;
-  segTop = v('segSize'); curse = segTop; breakSegment();
+  segIdx = SEGS-1; segTop = sizes()[SEGS-1]; curse = segTop; breakSegment();
 };
 document.querySelectorAll('button').forEach(b => b.addEventListener('click', () => b.blur()));
 
@@ -406,7 +407,7 @@ function tick(){
   const t=now(), dt=Math.min(0.05, t-last); last=t;
 
   // Durga
-  durga.dodgeCD=Math.max(0,durga.dodgeCD-dt); durga.hitCD=Math.max(0,durga.hitCD-dt); durga.invuln=Math.max(0,durga.invuln-dt);
+  durga.hitCD=Math.max(0,durga.hitCD-dt); durga.invuln=Math.max(0,durga.invuln-dt);
   if (durga.stamWait>0) durga.stamWait-=dt; else durga.stam=Math.min(v('stamMax'), durga.stam+v('stamRegen')*dt);
   const feeding = keys['f'] && phase==='sleep' && inRange(garuda, v('garudaR')) && !busy();
   if (durga.lock>0){ durga.lock-=dt; if (durga.lock<=0 && durga.lockAction){ const fn=durga.lockAction; durga.lockAction=null; durga.lockKind=null; fn(); } }
@@ -586,14 +587,14 @@ function draw(t, feeding){
   ctx.globalAlpha=1;
 
   // HUD
-  const segs=v('segments'), ss=v('segSize'), total=segs*ss, bw=480, bx=(W-bw)/2-30, by=14, bh=14;
+  const sz=sizes(), total=totalCurse(), bw=480, bx=(W-bw)/2-30, by=14, bh=14;
   ctx.textAlign='left'; ctx.font='12px system-ui';
   ctx.fillStyle='#ccc'; ctx.fillText('Curse', bx-48, by+11);
   ctx.fillStyle='#101114'; ctx.fillRect(bx,by,bw,bh);
   ctx.fillStyle='#7a3fbf'; ctx.fillRect(bx,by,bw*curse/total,bh);
   ctx.fillStyle='rgba(255,255,255,0.10)'; ctx.fillRect(bx+bw*curse/total, by, bw*(segTop-curse)/total, bh);
   ctx.strokeStyle='#15161a'; ctx.lineWidth=2;
-  for (let s=1;s<segs;s++){ const x=bx+bw*s/segs; ctx.beginPath(); ctx.moveTo(x,by); ctx.lineTo(x,by+bh); ctx.stroke(); }
+  let acc=total; for (let s=0;s<SEGS-1;s++){ acc-=sz[s]; const x=bx+bw*acc/total; ctx.beginPath(); ctx.moveTo(x,by); ctx.lineTo(x,by+bh); ctx.stroke(); }
   ctx.lineWidth=1;
   ctx.fillStyle='#fff'; ctx.fillText(`${curse.toFixed(0)}`, bx+bw+8, by+11);
 
@@ -609,7 +610,7 @@ function draw(t, feeding){
   ctx.fillStyle='#ff8a7a'; ctx.fillText(`Deaths: ${deaths}`, hx, hy+36);
 
   let banner='', col='#ffe14a';
-  if (phase==='ground') banner=`GROUND  ·  segment ${Math.round(segTop/ss)} of ${segs}  ·  bells up ${bells.filter(b=>b.up).length}/3  ·  hits taken ${durgaHits}  ·  deaths ${deaths}`;
+  if (phase==='ground') banner=`GROUND  ·  segment ${segIdx+1} of ${SEGS} (${sizes()[Math.min(segIdx,SEGS-1)]})  ·  bells up ${bells.filter(b=>b.up).length}/3  ·  hits taken ${durgaHits}  ·  deaths ${deaths}`;
   if (phase==='flight') banner=`FLIGHT  ${flightLeft.toFixed(1)}s left  ·  tie ropes  ·  bells up ${bells.filter(b=>b.up).length}/3`;
   if (phase==='sleep') banner=`ASLEEP  ·  sleep clock ${(t-sleepStart).toFixed(1)}s  ·  ring bells, hold F next to him`;
   if (phase==='done'){ banner='PURIFIED  ·  press Start fight to go again'; col='#9be59b'; }
@@ -643,7 +644,7 @@ function drawHighlight(){
     tag((sx(b1.x)+sx(b2.x))/2+60,(sy(b1.y)+sy(b2.y))/2, `Bell→Bell  run ${(L.bb/runE).toFixed(2)}s  sprint ${(L.bb/sprE).toFixed(2)}s`);
     tag(sx(0)-10,(sy(0)+sy(b1.y))/2, `Center→Bell  run ${(L.cb/runE).toFixed(2)}s  sprint ${(L.cb/sprE).toFixed(2)}s`);
   }
-  if (['dodgeDist','dodgeTime','dodgeCD'].includes(hl)){ circle(durga.x,durga.y,v('dodgeDist')*v('speedMult')); ctx.stroke(); }
+  if (['dodgeDist','dodgeDash'].includes(hl)){ circle(durga.x,durga.y,v('dodgeDist')*v('speedMult')); ctx.stroke(); }
   if (hl==='strikeTime') for (const b of bells){ circle(b.x,b.y,BELL_R*1.6); ctx.stroke(); }
   if (hl==='tieTime') for (const f of fans) if (!bells[f.i].tied){ circle(f.x,f.y,FAN_R*1.6); ctx.stroke(); }
   if (hl==='reach'){ for (const b of bells){ circle(b.x,b.y,v('reach')+BELL_R); ctx.stroke(); } for (const f of fans){ circle(f.x,f.y,v('reach')+FAN_R); ctx.stroke(); } ctx.strokeStyle='#7dff9a'; circle(garuda.x,garuda.y,v('reach')+v('garudaR')); ctx.stroke(); }
@@ -651,8 +652,10 @@ function drawHighlight(){
   if (hl==='bellDist') for (const b of bells){ ctx.beginPath(); ctx.moveTo(sx(0),sy(0)); ctx.lineTo(sx(b.x),sy(b.y)); ctx.stroke(); }
   if (hl==='fanDist'){ for (const f of fans){ circle(f.x,f.y,FAN_R*1.5); ctx.stroke(); const b=bells[f.i]; ctx.setLineDash([6,5]); ctx.beginPath(); ctx.moveTo(sx(f.x),sy(f.y)); ctx.lineTo(sx(b.x),sy(b.y)); ctx.stroke(); ctx.setLineDash([]);
       tag((sx(f.x)+sx(b.x))/2,(sy(f.y)+sy(b.y))/2, `fan→bell run ${((dist(f,b)-v('reach')*2-BELL_R-FAN_R)/runE).toFixed(1)}s`); } }
-  if (['segments','segSize','regen'].includes(hl)) ctx.strokeRect((W-480)/2-32,12,484,18);
-  if (hl==='regen') tag(W/2, 64, `Refills a full segment in ${(v('segSize')/Math.max(0.001,v('regen'))).toFixed(0)}s if untouched`);
+  if (hl==='regen') ctx.strokeRect((W-480)/2-32,12,484,18);
+  if (/^seg\d$/.test(hl)){ const sz=sizes(), tot=totalCurse(), n=+hl[3]-1, bx=(W-480)/2-30; let top=tot; for (let i=0;i<n;i++) top-=sz[i];
+    ctx.strokeRect(bx+480*(top-sz[n])/tot, 12, 480*sz[n]/tot, 18); }
+  if (hl==='regen') tag(W/2, 64, `Refills the current segment (${sizes()[Math.min(segIdx,SEGS-1)]}) in ${(sizes()[Math.min(segIdx,SEGS-1)]/Math.max(0.001,v('regen'))).toFixed(0)}s if untouched`);
   if (['stickDmg','garudaR','groundSpeed'].includes(hl)){ circle(garuda.x,garuda.y,v('garudaR')); ctx.stroke(); }
   if (hl==='groundSpeed') tag(sx(garuda.x), sy(garuda.y)-40, `Walks ${(v('groundSpeed')*v('speedMult')).toFixed(0)}uu/s  ·  Durga runs ${(v('runSpeed')*v('speedMult')).toFixed(0)}, sprints ${(v('sprintSpeed')*v('speedMult')).toFixed(0)}`);
   if (['lungeEvery','lungeWindup','lungeSpeed','lungeDist','lungeRecover'].includes(hl)){
